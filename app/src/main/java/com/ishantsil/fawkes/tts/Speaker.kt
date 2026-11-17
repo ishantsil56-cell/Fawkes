@@ -7,7 +7,8 @@ import java.util.Locale
 /** Speaks confirmations back to the user. Android TTS works fully offline. */
 class Speaker(context: Context) : TextToSpeech.OnInitListener {
 
-    private val tts = TextToSpeech(context.applicationContext, this)
+    private val appContext = context.applicationContext
+    private val tts = TextToSpeech(appContext, this)
 
     @Volatile
     private var ready = false
@@ -22,6 +23,10 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
 
     fun speak(text: String) {
         if (ready) {
+            // Speech rate is re-read every time, so Settings changes apply immediately.
+            val rate = appContext.getSharedPreferences("fawkes_prefs", Context.MODE_PRIVATE)
+                .getFloat("speech_rate", 1.0f)
+            tts.setSpeechRate(rate)
             tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "fawkes-utterance")
         }
     }

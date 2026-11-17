@@ -38,11 +38,18 @@
         android:textSize="16sp" />
 
     <Button
-        android:id="@+id/downloadButton"
+        android:id="@+id/downloadEnButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="24dp"
-        android:text="@string/download_model" />
+        android:text="Download English model (~41 MB)" />
+
+    <Button
+        android:id="@+id/downloadHiButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="Download Hindi model (~44 MB)" />
 
     <Button
         android:id="@+id/doneButton"

@@ -15,10 +15,9 @@ import java.net.URL
 import java.util.zip.ZipInputStream
 
 /**
- * First-run screen: downloads the Vosk voice model (~41 MB), shows progress,
- * unzips it into internal storage, and verifies it. Nothing else in the app
- * uses the network — this is the one download, and it never repeats unless
- * the model is deleted.
+ * First-run screen: downloads Vosk voice models (English ~41 MB, Hindi ~44 MB),
+ * shows progress, unzips into internal storage, verifies. The voice models are
+ * the only downloads in the app — nothing else uses the network.
  */
 class ModelDownloadActivity : AppCompatActivity() {
 
@@ -32,14 +31,17 @@ class ModelDownloadActivity : AppCompatActivity() {
         binding = ActivityModelDownloadBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        binding.downloadButton.setOnClickListener { startDownload() }
+        binding.downloadEnButton.setOnClickListener { startDownload("en") }
+        binding.downloadHiButton.setOnClickListener { startDownload("hi") }
         binding.doneButton.setOnClickListener {
             setResult(Activity.RESULT_OK)
             finish()
         }
 
-        if (VoskManager.isModelInstalled(this)) {
-            showDone("Voice model is already installed.")
+        refreshButtons()
+        if (VoskManager.isModelInstalled(this, "en")) {
+            setStatus("English voice model is installed. Hindi is optional.")
+            binding.doneButton.visibility = View.VISIBLE
         } else {
             checkFreeSpace()
         }
@@ -50,36 +52,66 @@ class ModelDownloadActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
+    private fun refreshButtons() {
+        val enInstalled = VoskManager.isModelInstalled(this, "en")
+        val hiInstalled = VoskManager.isModelInstalled(this, "hi")
+        binding.downloadEnButton.isEnabled = !enInstalled
+        binding.downloadEnButton.text = if (enInstalled) {
+            "English model installed"
+        } else {
+            "Download English model (~41 MB)"
+        }
+        binding.downloadHiButton.isEnabled = !hiInstalled
+        binding.downloadHiButton.text = if (hiInstalled) {
+            "Hindi model installed"
+        } else {
+            "Download Hindi model (~44 MB)"
+        }
+    }
+
     private fun checkFreeSpace() {
         val freeBytes = StatFs(filesDir.absolutePath).availableBytes
         val freeMb = freeBytes / (1024 * 1024)
         if (freeBytes < MIN_FREE_BYTES) {
             showError("Low storage: only ${freeMb} MB free. The model needs about 100 MB unpacked.")
         } else {
-            setStatus("Ready to download the voice model (~41 MB). ${freeMb} MB free.")
+            setStatus(
+                "Download the English voice model (~41 MB). $freeMb MB free. " +
+                    "Hindi is optional.",
+            )
         }
     }
 
-    private fun startDownload() {
-        binding.downloadButton.isEnabled = false
-        binding.downloadButton.visibility = View.GONE
+    private fun startDownload(lang: String) {
+        val url = VoskManager.modelUrlFor(lang)
+        val zipName = url.substringAfterLast("/")
+        val label = if (lang == "hi") "Hindi" else "English"
+        binding.downloadEnButton.isEnabled = false
+        binding.downloadHiButton.isEnabled = false
         binding.progressBar.visibility = View.VISIBLE
         binding.progressBar.progress = 0
-        setStatus("Downloading voice model…")
+        binding.progressText.text = ""
+        setStatus("Downloading $label voice model…")
         cancelled = false
 
         Thread {
             try {
-                val zipFile = File(filesDir, ZIP_NAME)
-                downloadZip(zipFile)
+                val zipFile = File(filesDir, zipName)
+                downloadZip(url, zipFile)
                 if (cancelled) return@Thread
                 runOnUiThread { setStatus("Unpacking…") }
                 unzip(zipFile)
                 zipFile.delete()
-                if (!VoskManager.isModelInstalled(this)) {
+                if (!VoskManager.isModelInstalled(this, lang)) {
                     throw IllegalStateException("Download finished but the model looks incomplete.")
                 }
-                runOnUiThread { showDone("Voice model installed. Fawkes can listen now.") }
+                runOnUiThread {
+                    refreshButtons()
+                    setStatus("$label voice model installed.")
+                    binding.progressBar.visibility = View.GONE
+                    binding.progressText.text = ""
+                    binding.doneButton.visibility = View.VISIBLE
+                }
             } catch (e: Exception) {
                 if (!cancelled) {
                     runOnUiThread {
@@ -90,8 +122,8 @@ class ModelDownloadActivity : AppCompatActivity() {
         }.start()
     }
 
-    private fun downloadZip(zipFile: File) {
-        val connection = (URL(MODEL_URL).openConnection() as HttpURLConnection).apply {
+    private fun downloadZip(url: String, zipFile: File) {
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
             instanceFollowRedirects = true
             connectTimeout = 30_000
             readTimeout = 30_000
@@ -160,24 +192,11 @@ class ModelDownloadActivity : AppCompatActivity() {
         setStatus(text)
         binding.progressBar.visibility = View.GONE
         binding.progressText.text = ""
-        binding.downloadButton.isEnabled = true
-        binding.downloadButton.visibility = View.VISIBLE
-        binding.downloadButton.text = "Retry download"
+        refreshButtons()
         Toast.makeText(this, text, Toast.LENGTH_LONG).show()
     }
 
-    private fun showDone(text: String) {
-        setStatus(text)
-        binding.progressBar.visibility = View.GONE
-        binding.progressText.text = ""
-        binding.downloadButton.visibility = View.GONE
-        binding.doneButton.visibility = View.VISIBLE
-    }
-
     companion object {
-        const val MODEL_URL =
-            "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip"
-        private const val ZIP_NAME = "vosk-model-small-en-us-0.15.zip"
         private const val MIN_FREE_BYTES = 150L * 1024 * 1024
     }
 }
