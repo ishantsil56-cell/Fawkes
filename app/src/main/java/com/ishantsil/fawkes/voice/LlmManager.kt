@@ -175,7 +175,7 @@ object LlmManager {
         val options = LlmInference.LlmInferenceOptions.builder()
             .setModelPath(modelFile(context).absolutePath)
             .setMaxTokens(MAX_TOKENS)
-            .setTopk(40)
+            .setTopK(40)
             .setTemperature(0.8f)
             .build()
         val engine = LlmInference.createFromOptions(context, options)
