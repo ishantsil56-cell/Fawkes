@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">Fawkes</string>
+    <string name="tap_to_listen">Tap to listen</string>
+    <string name="download_model">Download voice model</string>
+    <string name="download_title">Voice model</string>
+    <string name="download_intro">Fawkes listens entirely on your phone, using an offline voice model. Download it once (~41 MB) and it never needs the internet again.</string>
+    <string name="open_fawkes">Open Fawkes</string>
+    <string name="model_ready">Voice model: installed and ready.</string>
+    <string name="model_missing">Voice model: not installed yet.</string>
+</resources>

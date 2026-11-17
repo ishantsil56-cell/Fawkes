@@ -1,0 +1,7 @@
+<resources>
+    <style name="Theme.Fawkes" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/ember</item>
+        <item name="colorPrimaryDark">@color/ember_dark</item>
+        <item name="colorAccent">@color/ember</item>
+    </style>
+</resources>

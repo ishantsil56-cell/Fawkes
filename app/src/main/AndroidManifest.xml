@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Microphone: listening at all. Asked for on first launch. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- INTERNET is used ONLY for the one-time voice-model download
+         (vosk-model-small-en-us-0.15, ~41 MB, from alphacephei.com).
+         No voice audio or any other data ever leaves the phone.
+         Long-term option: bundle the model in the APK at build time
+         and drop this permission entirely. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Fawkes">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".voice.ModelDownloadActivity"
+            android:exported="false"
+            android:label="@string/download_title" />
+
+    </application>
+
+</manifest>

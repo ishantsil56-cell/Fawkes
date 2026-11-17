@@ -1,0 +1,20 @@
+# Gradle / Android Studio
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+captures/
+
+# Keystore — never commit signing keys
+*.jks
+*.keystore
+
+# Voice models — never commit the 41 MB model to git.
+# It downloads on first run inside the app.
+*.zip
+vosk-model-*/
+app/src/main/assets/models/
+
+# OS
+.DS_Store

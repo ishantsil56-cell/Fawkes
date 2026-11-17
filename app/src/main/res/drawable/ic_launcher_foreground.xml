@@ -1,0 +1,14 @@
+<vector
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Stylised phoenix flame. -->
+    <path
+        android:fillColor="#E8590C"
+        android:pathData="M54,14 C54,14 28,42 28,62 a26,26 0 0 0 52,0 C80,42 54,14 54,14 Z" />
+    <path
+        android:fillColor="#FFD43B"
+        android:pathData="M54,46 C54,46 40,60 40,70 a14,14 0 0 0 28,0 C68,60 54,46 54,46 Z" />
+</vector>
