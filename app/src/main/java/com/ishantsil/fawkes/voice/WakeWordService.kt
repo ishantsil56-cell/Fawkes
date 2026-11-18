@@ -8,24 +8,34 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import androidx.core.content.ContextCompat
+import com.ishantsil.fawkes.commands.CommandExecutor
 import com.ishantsil.fawkes.notifications.NotificationHelper
+import com.ishantsil.fawkes.tts.Speaker
 import org.vosk.Recognizer
 import org.vosk.android.RecognitionListener
 import org.vosk.android.SpeechService
 
 /**
- * Foreground service that listens for "Hey Fawkes" and raises a tap-to-talk
- * notification. Keyword spotting runs on the phone via a grammar-restricted
- * Vosk recognizer. Toggleable in Settings; it costs battery, so it defaults off.
+ * Foreground service that listens for "Hey Fawkes" and then listens for the
+ * command itself — no tap needed. The command runs in the service (the same
+ * executor the app uses) and the answer is spoken aloud; then the service
+ * goes back to spotting for the wake word.
  *
- * MainActivity pauses it while a command is being recorded (one microphone).
+ * Keyword spotting runs on the phone via a grammar-restricted Vosk
+ * recognizer. Toggleable in Settings; it costs battery, so it defaults off.
+ *
+ * The tap-to-talk notification is kept as a fallback (it opens the app
+ * listening). MainActivity pauses the service while a command is being
+ * recorded in the app (one microphone).
  */
 class WakeWordService : Service() {
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var speechService: SpeechService? = null
     private var recognizer: Recognizer? = null
+    private var speaker: Speaker? = null
     private var paused = false
+    private var commandListening = false
     private var lastTriggerAt = 0L
     private var retryRunnable: Runnable? = null
 
@@ -36,6 +46,7 @@ class WakeWordService : Service() {
             NotificationHelper.WAKE_WORD_NOTIFICATION_ID,
             NotificationHelper.wakeWordNotification(this, listening = true),
         )
+        speaker = Speaker(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -63,13 +74,19 @@ class WakeWordService : Service() {
     override fun onDestroy() {
         retryRunnable?.let { mainHandler.removeCallbacks(it) }
         stopListening()
+        if (commandListening) {
+            commandListening = false
+            VoskManager.stopListening()
+        }
+        speaker?.shutdown()
+        speaker = null
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun startListening() {
-        if (paused || speechService != null) return
+        if (paused || commandListening || speechService != null) return
         if (!VoskManager.isModelInstalled(this)) {
             // No model: nothing to listen with. The user installs it from the app.
             stopSelf()
@@ -78,7 +95,7 @@ class WakeWordService : Service() {
         VoskManager.loadModel(
             this,
             onReady = {
-                if (paused) return@loadModel
+                if (paused || commandListening) return@loadModel
                 try {
                     recognizer = VoskManager.createWakeRecognizer(this)
                     val wakeRecognizer = recognizer ?: run {
@@ -119,11 +136,53 @@ class WakeWordService : Service() {
     }
 
     private fun checkWake(hypothesis: String) {
+        if (commandListening) return
         if (!VoskManager.hypothesisHasWakePhrase(hypothesis)) return
         val now = System.currentTimeMillis()
         if (now - lastTriggerAt < TRIGGER_COOLDOWN_MS) return
         lastTriggerAt = now
+        // Fallback: tap-to-talk notification (opens the app listening).
         NotificationHelper.showWakeDetected(this)
+        // Hands-free: listen for the command right here, no tap needed.
+        startCommandListening()
+    }
+
+    private fun startCommandListening() {
+        if (commandListening) return
+        commandListening = true
+        stopListening() // Stop the wake recognizer; one microphone.
+        VoskManager.startListening(this, object : VoskManager.Listener {
+            override fun onPartial(text: String) {
+                // Partials are ignored in the background.
+            }
+
+            override fun onFinal(results: List<String>) {
+                CommandExecutor.executePhrase(applicationContext, results) { spoken, _ ->
+                    speaker?.speak(spoken)
+                    endCommandListening()
+                }
+            }
+
+            override fun onError(message: String) {
+                endCommandListening()
+            }
+
+            override fun onTimeout() {
+                speaker?.speak("I didn't catch that.")
+                endCommandListening()
+            }
+        })
+    }
+
+    /**
+     * Back to spotting for the wake word. Spotting resumes only after the
+     * command finishes, so the spoken confirmation can't retrigger it.
+     * (For slow "ask" answers this leaves a gap of up to a minute.)
+     */
+    private fun endCommandListening() {
+        commandListening = false
+        VoskManager.stopListening()
+        if (!paused && isEnabled(this)) startListening()
     }
 
     private fun scheduleRetry() {
@@ -137,6 +196,10 @@ class WakeWordService : Service() {
         paused = true
         retryRunnable?.let { mainHandler.removeCallbacks(it) }
         stopListening()
+        if (commandListening) {
+            commandListening = false
+            VoskManager.stopListening()
+        }
         updateNotification(listening = false)
     }
 

@@ -96,6 +96,25 @@ class SettingsActivity : AppCompatActivity() {
             }
         }
 
+        // Better-accuracy English model.
+        binding.lgraphSwitch.isChecked = VoskManager.useLgraph(this)
+        binding.lgraphSwitch.setOnCheckedChangeListener { _, enabled ->
+            if (enabled && !VoskManager.isModelDirInstalled(this, VoskManager.MODEL_EN_LGRAPH)) {
+                Toast.makeText(this, "Download the better-accuracy model first.", Toast.LENGTH_LONG).show()
+                openModelDownload()
+                binding.lgraphSwitch.isChecked = false
+                return@setOnCheckedChangeListener
+            }
+            if (!enabled && !VoskManager.isModelDirInstalled(this, VoskManager.MODEL_EN)) {
+                Toast.makeText(this, "Download the standard English model first.", Toast.LENGTH_LONG).show()
+                openModelDownload()
+                binding.lgraphSwitch.isChecked = true
+                return@setOnCheckedChangeListener
+            }
+            VoskManager.setUseLgraph(this, enabled)
+            refreshModelStatus()
+        }
+
         // Models.
         binding.modelsButton.setOnClickListener { openModelDownload() }
 
@@ -115,11 +134,19 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun refreshModelStatus() {
-        val en = VoskManager.isModelInstalled(this, "en")
-        val hi = VoskManager.isModelInstalled(this, "hi")
+        val en = VoskManager.isModelDirInstalled(this, VoskManager.MODEL_EN)
+        val lgraph = VoskManager.isModelDirInstalled(this, VoskManager.MODEL_EN_LGRAPH)
+        val hi = VoskManager.isModelDirInstalled(this, VoskManager.MODEL_HI)
+        val active = when (VoskManager.currentModelKey(this)) {
+            VoskManager.MODEL_KEY_EN_LGRAPH -> "English (better accuracy)"
+            VoskManager.MODEL_KEY_HI -> "Hindi"
+            else -> "English"
+        }
         binding.modelStatus.text =
             "English model: ${if (en) "installed" else "not installed"}\n" +
-                "Hindi model: ${if (hi) "installed" else "not installed"}"
+                "Better-accuracy English model: ${if (lgraph) "installed" else "not installed"}\n" +
+                "Hindi model: ${if (hi) "installed" else "not installed"}\n" +
+                "Active: $active"
     }
 
     private fun refreshLlmStatus() {

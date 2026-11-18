@@ -5,6 +5,8 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -24,6 +26,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var speaker: Speaker
     private var autoListenPending = false
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var continuousRunnable: Runnable? = null
 
     private val downloadLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -56,10 +60,15 @@ class MainActivity : AppCompatActivity() {
         binding.helpButton.setOnClickListener {
             startActivity(Intent(this, HelpActivity::class.java))
         }
+        binding.continuousSwitch.isChecked = isContinuousListen()
+        binding.continuousSwitch.setOnCheckedChangeListener { _, enabled ->
+            setContinuousListen(enabled)
+            if (!enabled) cancelContinuousRestart()
+        }
 
         askForPermissionsIfNeeded()
         refreshModelStatus()
-        log("Fawkes 0.3.0 — tap to listen, or say \"Hey Fawkes\" (Settings).")
+        log("Fawkes 0.3.1 — tap to listen, or say \"Hey Fawkes\" (Settings).")
 
         autoListenPending = intent?.getBooleanExtra(EXTRA_LISTEN, false) == true
     }
@@ -73,7 +82,13 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    override fun onPause() {
+        cancelContinuousRestart()
+        super.onPause()
+    }
+
     override fun onDestroy() {
+        cancelContinuousRestart()
         stopListening()
         speaker.shutdown()
         VoskManager.release()
@@ -82,6 +97,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun onMicTapped() {
         if (VoskManager.isListening()) {
+            cancelContinuousRestart()
             stopListening()
             log("Stopped listening.")
             return
@@ -110,8 +126,8 @@ class MainActivity : AppCompatActivity() {
                 binding.heardText.text = text
             }
 
-            override fun onFinal(text: String) {
-                onHeard(text)
+            override fun onFinal(results: List<String>) {
+                onHeard(results)
             }
 
             override fun onError(message: String) {
@@ -136,15 +152,51 @@ class MainActivity : AppCompatActivity() {
         WakeWordService.resume(this)
     }
 
-    private fun onHeard(text: String) {
+    private fun onHeard(results: List<String>) {
         stopListening()
+        val text = results.firstOrNull().orEmpty()
         binding.heardText.text = "\"$text\""
         FawkesWidget.updateLastHeard(this, text)
-        log("Heard: \"$text\"")
-        CommandExecutor.executePhrase(this, text) { spoken, logLine ->
+        log(
+            "Heard: \"$text\"" +
+                if (results.size > 1) " (+${results.size - 1} alternatives)" else "",
+        )
+        CommandExecutor.executePhrase(this, results) { spoken, logLine ->
             log(logLine)
             speaker.speak(spoken)
+            scheduleContinuousRestart(spoken)
         }
+    }
+
+    /**
+     * Continuous listen: after a command finishes, start listening again so
+     * commands chain without retapping. The restart waits for the spoken
+     * confirmation to finish (roughly 15 chars/second, capped at 6 s) so the
+     * mic doesn't pick up Fawkes' own voice and re-run the command.
+     * Timeouts and errors don't restart — silence shouldn't loop forever.
+     */
+    private fun scheduleContinuousRestart(spoken: String) {
+        cancelContinuousRestart()
+        if (!isContinuousListen()) return
+        val delayMs = (1_000L + spoken.length * 1000L / 15).coerceAtMost(6_000L)
+        continuousRunnable = Runnable {
+            if (isContinuousListen() && isResumed) onMicTapped()
+        }
+        mainHandler.postDelayed(continuousRunnable!!, delayMs)
+    }
+
+    private fun cancelContinuousRestart() {
+        continuousRunnable?.let { mainHandler.removeCallbacks(it) }
+        continuousRunnable = null
+    }
+
+    private fun isContinuousListen(): Boolean =
+        getSharedPreferences("fawkes_prefs", MODE_PRIVATE)
+            .getBoolean("continuous_listen", false)
+
+    private fun setContinuousListen(enabled: Boolean) {
+        getSharedPreferences("fawkes_prefs", MODE_PRIVATE)
+            .edit().putBoolean("continuous_listen", enabled).apply()
     }
 
     private fun openModelDownload() {
@@ -171,7 +223,9 @@ class MainActivity : AppCompatActivity() {
     private fun refreshModelStatus() {
         val lang = VoskManager.currentLanguage(this)
         val installed = VoskManager.isModelInstalled(this)
-        val langName = if (lang == "hi") "Hindi" else "English"
+        val langName = if (lang == "hi") "Hindi"
+        else if (VoskManager.useLgraph(this)) "English (better accuracy)"
+        else "English"
         binding.modelStatus.text = if (installed) {
             getString(R.string.model_ready) + " ($langName)"
         } else {

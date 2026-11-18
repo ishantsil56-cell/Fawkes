@@ -8,11 +8,18 @@ Named for the phoenix. Like one, it runs entirely on its own.
 
 ## Status
 
-0.3.0 — Phase 1, 2 and 3 are in: live voice commands (flashlight, apps,
+0.3.2 — Phase 1, 2 and 3 are in: live voice commands (flashlight, apps,
 alarms, calls, notes, music, SOS), the "Hey Fawkes" wake word, reminders,
 custom commands and routines, a widget and Quick Settings tile, Hindi
 voice model support, conversation memory, and on-device AI answers via a
-user-imported Gemma model. See [PLAN.md](PLAN.md) for the full plan and
+user-imported Gemma model. 0.3.1 fixed two bugs: the wake word now runs
+commands hands-free (no tap — say the command right after "Hey Fawkes"),
+with a continuous-listen toggle in the app, and LLM answers now use
+Gemma's chat template with a lower temperature, so they answer instead
+of rambling. 0.3.2 improves listening accuracy: the recognizer tries
+Vosk's 3 best guesses for every command, and a bigger English voice model
+(lgraph, 128 MB) is available as a download for noticeably better hearing.
+See [PLAN.md](PLAN.md) for the full plan and
 [docs/COMMANDS.md](docs/COMMANDS.md) for every command.
 
 ## How it works
@@ -25,8 +32,10 @@ Your voice → Microphone → Vosk (offline speech-to-text, on the phone)
 ```
 
 - **Speech-to-text:** [Vosk](https://alphacephei.com/vosk/) (`vosk-android:0.3.75`),
-  small English model `vosk-model-small-en-us-0.15` (~41 MB) and small Hindi
-  model `vosk-model-small-hi-0.22` (~44 MB).
+  small English model `vosk-model-small-en-us-0.15` (~41 MB), bigger English
+  model `vosk-model-en-us-0.22-lgraph` (~128 MB, more accurate, switchable in
+  Settings), and small Hindi model `vosk-model-small-hi-0.22` (~44 MB). The
+  command matcher tries Vosk's 3 best guesses for every utterance.
 - **Speech output:** Android TextToSpeech, built in and offline.
 - **On-device AI:** MediaPipe LLM Inference (`tasks-genai:0.10.14`) with a
   user-imported Gemma 2B model — answers "ask …" questions fully offline.

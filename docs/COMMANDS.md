@@ -4,6 +4,13 @@ Every supported phrase, kept up to date. 0.3.0 ships Phase 1, 2 and 3 —
 everything below is live. Unrecognised phrases are logged on screen; the
 log becomes the next feature list.
 
+Listening accuracy (0.3.2): the recognizer asks Vosk for its 3 best
+guesses and tries each one against the commands, so a misheard top guess
+no longer kills the command — the log notes when an alternative matched.
+For noticeably better hearing, download the bigger English voice model
+(lgraph, ~128 MB) from the model download screen or switch to it in
+Settings; it replaces the small 41 MB model for English.
+
 ## Phase 1 — the 12 core commands
 
 | # | Command | Example phrases |
@@ -25,7 +32,8 @@ log becomes the next feature list.
 
 | Feature | Example phrases |
 |---|---|
-| Wake word | "Hey Fawkes" (toggle in Settings; tap the notification to talk) |
+| Wake word | "Hey Fawkes", then say the command — no tap needed (toggle in Settings; the tap-to-talk notification is kept as a fallback) |
+| Continuous listen | Toggle on the home screen: while the app is open, listening restarts after each command |
 | Reminders | "remind me in 30 minutes to drink water", "remind me at 7 PM to call Maa" |
 | Music control | "play", "pause", "next", "previous" |
 | SOS flashlight | "SOS" (blinks ... --- ... three times), "stop SOS" |
@@ -63,9 +71,11 @@ log becomes the next feature list.
 - Reminders need exact-alarm permission (Android 12+); Fawkes opens the
   settings page for it the first time you set one.
 - The wake word costs battery and Samsung may still kill it — exempt
-  Fawkes from battery optimisation (button in Settings). Saying
-  "Hey Fawkes" raises a notification; tap it to talk (Android blocks
-  apps from opening themselves from the background).
+  Fawkes from battery optimisation (button in Settings) AND add it to
+  "Never sleeping apps" (Settings → Battery → Background usage limits).
+  Saying "Hey Fawkes" makes the service listen for your command right
+  away and speak the answer; it also raises a tap-to-talk notification
+  as a fallback. Spotting resumes after each command finishes.
 - Custom commands and routines run up to 6 steps each, in order. Steps
   can't call other custom commands (no nesting).
 - Hindi: the Hindi model recognises Hindi speech, and the flashlight,
@@ -73,6 +83,9 @@ log becomes the next feature list.
   commands are English for now.
 - On-device AI: Gemma's licence requires accepting it on Kaggle, so the
   model file is not bundled. Download gemma-2b-it-gpu-int4.bin from
-  Kaggle (free account), import it in Settings, then ask away. Answers
+  Kaggle (free account), import it in Settings, then ask away. It must
+  be the IT (instruct) model — a base non-instruct Gemma will ramble
+  no matter what the app does. Questions are wrapped in Gemma's chat
+  template with a short system instruction, temperature 0.3. Answers
   are slow on this phone (30–60 s for the first answer) and need about
   2 GB of free RAM.

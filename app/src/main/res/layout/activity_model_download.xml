@@ -45,6 +45,13 @@
         android:text="Download English model (~41 MB)" />
 
     <Button
+        android:id="@+id/downloadLgraphButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="Download better-accuracy English model (~128 MB)" />
+
+    <Button
         android:id="@+id/downloadHiButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"

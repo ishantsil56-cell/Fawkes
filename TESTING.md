@@ -55,3 +55,26 @@ doesn't reflect reality. Tick before every release tag.
 - [ ] "call him" / "text her" resolve to the last contact without a name
 - [ ] "ask …" with no model explains how to import one
 - [ ] "ask …" with a Gemma model imported answers (slow — allow a minute)
+
+## v0.3.1 — bug fixes
+
+- [ ] Wake word on → "Hey Fawkes" → "flashlight on" → torch turns on, no tap
+- [ ] After a background command, the next "Hey Fawkes" works again
+- [ ] Tapping the wake notification still opens the app listening (fallback)
+- [ ] Continuous listen on in the app → commands chain without retapping
+- [ ] Continuous listen off → one command, then it stops (old behaviour)
+- [ ] "ask what is the capital of France" gives a short coherent answer
+  (with the Gemma 2B IT model — a base model will still ramble)
+- [ ] Wake word survives overnight: battery exemption + Never sleeping apps set
+
+## v0.3.2 — listening accuracy
+
+- [ ] A command the small model mishears still runs when an alternative
+  guess matches (log shows `[matched "..."]`)
+- [ ] Better-accuracy English model downloads (~128 MB) and becomes active;
+  home screen shows "English (better accuracy)"
+- [ ] Settings switch toggles between standard and better-accuracy models
+- [ ] Commands are noticeably more reliable on the lgraph model in a quiet room
+- [ ] Wake word still works with the lgraph model active
+- [ ] Low-storage warning shows when free space is under 450 MB for the
+  lgraph download

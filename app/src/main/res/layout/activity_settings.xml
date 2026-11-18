@@ -73,6 +73,13 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp" />
 
+        <com.google.android.material.switchmaterial.SwitchMaterial
+            android:id="@+id/lgraphSwitch"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Better-accuracy English model (128 MB)" />
+
         <Button
             android:id="@+id/modelsButton"
             android:layout_width="wrap_content"

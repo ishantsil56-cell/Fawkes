@@ -16,25 +16,40 @@ import java.io.File
  *
  * SpeechService callbacks arrive on a background thread; this object posts
  * all listener calls to the main thread.
+ *
+ * Accuracy: the default small English model (41 MB) mishears often, so the
+ * recognizer asks Vosk for its 3 best guesses and the command matcher tries
+ * each one. A bigger English model (lgraph, 128 MB) is available as a
+ * download and is noticeably more accurate.
  */
 object VoskManager {
 
     const val MODEL_EN = "vosk-model-small-en-us-0.15"
+    const val MODEL_EN_LGRAPH = "vosk-model-en-us-0.22-lgraph"
     const val MODEL_HI = "vosk-model-small-hi-0.22"
     const val MODEL_URL_EN = "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip"
+    const val MODEL_URL_EN_LGRAPH = "https://alphacephei.com/vosk/models/vosk-model-en-us-0.22-lgraph.zip"
     const val MODEL_URL_HI = "https://alphacephei.com/vosk/models/vosk-model-small-hi-0.22.zip"
+
+    /** Model keys used by the download screen. */
+    const val MODEL_KEY_EN = "en"
+    const val MODEL_KEY_EN_LGRAPH = "en-lgraph"
+    const val MODEL_KEY_HI = "hi"
 
     const val SAMPLE_RATE = 16000f
     const val LISTEN_TIMEOUT_MS = 12_000L
     const val WAKE_PHRASE = "hey fawkes"
+    private const val MAX_ALTERNATIVES = 3
 
     private const val PREFS = "fawkes_prefs"
     private const val KEY_LANGUAGE = "language"
+    private const val KEY_USE_LGRAPH = "use_lgraph"
     private const val MODEL_MARKER = "am/final.mdl"
 
     interface Listener {
         fun onPartial(text: String)
-        fun onFinal(text: String)
+        /** Best guess first, then Vosk's alternative guesses (may be empty). */
+        fun onFinal(results: List<String>)
         fun onError(message: String)
         fun onTimeout()
     }
@@ -42,7 +57,7 @@ object VoskManager {
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private var model: Model? = null
-    private var modelLang: String? = null
+    private var modelKey: String? = null
     private var speechService: SpeechService? = null
     private var recognizer: Recognizer? = null
     private var listening = false
@@ -59,21 +74,57 @@ object VoskManager {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putString(KEY_LANGUAGE, lang).apply()
         // Drop the loaded model so the next listen loads the right one.
-        if (modelLang != null && modelLang != lang) releaseModel()
+        if (modelKey != null && currentModelKey(context) != modelKey) releaseModel()
     }
 
-    fun modelDirNameFor(lang: String): String =
-        if (lang == "hi") MODEL_HI else MODEL_EN
+    /** True when the bigger, more accurate English model is selected. */
+    fun useLgraph(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_USE_LGRAPH, false)
 
-    fun modelUrlFor(lang: String): String =
-        if (lang == "hi") MODEL_URL_HI else MODEL_URL_EN
+    fun setUseLgraph(context: Context, enabled: Boolean) {
+        val changed = useLgraph(context) != enabled
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_USE_LGRAPH, enabled).apply()
+        if (changed) releaseModel()
+    }
 
-    fun modelDir(context: Context, lang: String = currentLanguage(context)): File =
-        File(context.filesDir, modelDirNameFor(lang))
+    /** The model key for the current language + accuracy choice. */
+    fun currentModelKey(context: Context): String {
+        val lang = currentLanguage(context)
+        return if (lang == "hi") MODEL_KEY_HI
+        else if (useLgraph(context)) MODEL_KEY_EN_LGRAPH
+        else MODEL_KEY_EN
+    }
+
+    fun modelDirNameForModel(modelKey: String): String = when (modelKey) {
+        MODEL_KEY_EN_LGRAPH -> MODEL_EN_LGRAPH
+        MODEL_KEY_HI -> MODEL_HI
+        else -> MODEL_EN
+    }
+
+    fun modelUrlForModel(modelKey: String): String = when (modelKey) {
+        MODEL_KEY_EN_LGRAPH -> MODEL_URL_EN_LGRAPH
+        MODEL_KEY_HI -> MODEL_URL_HI
+        else -> MODEL_URL_EN
+    }
+
+    fun modelDir(context: Context, lang: String = currentLanguage(context)): File {
+        val key = if (lang == "hi") MODEL_KEY_HI
+        else if (useLgraph(context)) MODEL_KEY_EN_LGRAPH
+        else MODEL_KEY_EN
+        return File(context.filesDir, modelDirNameForModel(key))
+    }
 
     /** True when the unzipped model is present and looks complete. */
     fun isModelInstalled(context: Context, lang: String = currentLanguage(context)): Boolean {
         val dir = modelDir(context, lang)
+        return dir.isDirectory && File(dir, MODEL_MARKER).isFile
+    }
+
+    /** True when a specific model directory is present and looks complete. */
+    fun isModelDirInstalled(context: Context, dirName: String): Boolean {
+        val dir = File(context.filesDir, dirName)
         return dir.isDirectory && File(dir, MODEL_MARKER).isFile
     }
 
@@ -85,16 +136,16 @@ object VoskManager {
         onReady: () -> Unit,
         onError: (String) -> Unit,
     ) {
-        val lang = currentLanguage(context)
-        if (model != null && modelLang == lang) {
+        val key = currentModelKey(context)
+        if (model != null && modelKey == key) {
             onReady()
             return
         }
         Thread {
             try {
                 releaseModel()
-                model = Model(modelDir(context, lang).absolutePath)
-                modelLang = lang
+                model = Model(modelDir(context).absolutePath)
+                modelKey = key
                 mainHandler.post { onReady() }
             } catch (e: Exception) {
                 mainHandler.post { onError("Could not load voice model: ${e.message}") }
@@ -108,7 +159,7 @@ object VoskManager {
         } catch (_: Exception) {
         }
         model = null
-        modelLang = null
+        modelKey = null
     }
 
     // ---- live listening (commands) ----
@@ -117,7 +168,7 @@ object VoskManager {
 
     fun startListening(context: Context, listener: Listener) {
         if (listening) return
-        if (model == null || modelLang != currentLanguage(context)) {
+        if (model == null || modelKey != currentModelKey(context)) {
             loadModel(
                 context,
                 onReady = { startService(listener) },
@@ -138,6 +189,9 @@ object VoskManager {
             delivered = false
             // Local val: Kotlin won't smart-cast the nullable member property.
             val newRecognizer = Recognizer(currentModel, SAMPLE_RATE)
+            // Ask Vosk for its N best guesses: the top one is often wrong on
+            // the small model, and a lower-ranked guess may match a command.
+            newRecognizer.setMaxAlternatives(MAX_ALTERNATIVES)
             recognizer = newRecognizer
             speechService = SpeechService(newRecognizer, SAMPLE_RATE)
             speechService?.startListening(object : RecognitionListener {
@@ -148,13 +202,13 @@ object VoskManager {
 
                 override fun onResult(hypothesis: String) {
                     // Vosk finalised an utterance: take it and stop.
-                    val text = parseText(hypothesis, "text")
-                    if (text.isNotBlank()) deliverFinal(text, listener)
+                    val results = parseAlternatives(hypothesis)
+                    if (results.isNotEmpty()) deliverFinal(results, listener)
                 }
 
                 override fun onFinalResult(hypothesis: String) {
-                    val text = parseText(hypothesis, "text")
-                    if (text.isNotBlank()) deliverFinal(text, listener)
+                    val results = parseAlternatives(hypothesis)
+                    if (results.isNotEmpty()) deliverFinal(results, listener)
                 }
 
                 override fun onError(exception: Exception) {
@@ -183,11 +237,11 @@ object VoskManager {
         }
     }
 
-    private fun deliverFinal(text: String, listener: Listener) {
+    private fun deliverFinal(results: List<String>, listener: Listener) {
         if (delivered) return
         delivered = true
         stopListening()
-        mainHandler.post { listener.onFinal(text) }
+        mainHandler.post { listener.onFinal(results) }
     }
 
     fun stopListening() {
@@ -241,6 +295,28 @@ object VoskManager {
         } catch (_: Exception) {
             ""
         }
+    }
+
+    /**
+     * Best guess first, then Vosk's alternative guesses (present when
+     * setMaxAlternatives was used). Duplicates and blanks removed.
+     */
+    fun parseAlternatives(hypothesis: String): List<String> {
+        val results = mutableListOf<String>()
+        val best = parseText(hypothesis, "text")
+        if (best.isNotBlank()) results.add(best)
+        try {
+            val alternatives = JSONObject(hypothesis).optJSONArray("alternatives")
+            if (alternatives != null) {
+                for (i in 0 until alternatives.length()) {
+                    val text = alternatives.optJSONObject(i)
+                        ?.optString("text", "")?.trim().orEmpty()
+                    if (text.isNotBlank() && text !in results) results.add(text)
+                }
+            }
+        } catch (_: Exception) {
+        }
+        return results
     }
 
     fun release() {

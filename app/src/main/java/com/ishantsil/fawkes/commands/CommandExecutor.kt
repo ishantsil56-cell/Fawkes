@@ -28,13 +28,40 @@ object CommandExecutor {
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    /**
+     * Tries each recognised phrase in order until one matches a known
+     * command — Vosk's top guess is often wrong on the small model, and a
+     * lower-ranked guess may be the command the user actually said. If none
+     * match, the first phrase's Unknown result runs so the user hears the
+     * usual "don't know that one yet" reply.
+     */
     fun executePhrase(
         context: Context,
-        phrase: String,
+        phrases: List<String>,
         onResult: (spoken: String, log: String) -> Unit,
     ) {
-        val result = CommandMatcher.match(phrase, context)
-        execute(context, result, onResult)
+        val nonEmpty = phrases.filter { it.isNotBlank() }
+        val first = nonEmpty.firstOrNull() ?: return
+        var matchedPhrase = first
+        var result = CommandMatcher.match(first, context)
+        if (result is MatchResult.Unknown) {
+            for (phrase in nonEmpty.drop(1)) {
+                val candidate = CommandMatcher.match(phrase, context)
+                if (candidate !is MatchResult.Unknown) {
+                    matchedPhrase = phrase
+                    result = candidate
+                    break
+                }
+            }
+        }
+        val callback = if (matchedPhrase != first) {
+            { spoken: String, log: String ->
+                onResult(spoken, "$log [matched \"$matchedPhrase\"]")
+            }
+        } else {
+            onResult
+        }
+        execute(context, result, callback)
     }
 
     fun execute(
@@ -266,7 +293,7 @@ object CommandExecutor {
                 runNext(index + 1)
                 return
             }
-            executePhrase(context, step) { spoken, _ ->
+            executePhrase(context, listOf(step)) { spoken, _ ->
                 spokenParts.add(spoken)
                 runNext(index + 1)
             }

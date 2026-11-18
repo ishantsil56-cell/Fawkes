@@ -15,9 +15,13 @@ import java.net.URL
 import java.util.zip.ZipInputStream
 
 /**
- * First-run screen: downloads Vosk voice models (English ~41 MB, Hindi ~44 MB),
- * shows progress, unzips into internal storage, verifies. The voice models are
- * the only downloads in the app — nothing else uses the network.
+ * First-run screen: downloads Vosk voice models — English standard (~41 MB),
+ * English better-accuracy (~128 MB), Hindi (~44 MB) — shows progress, unzips
+ * into internal storage, verifies. The voice models are the only downloads
+ * in the app — nothing else uses the network.
+ *
+ * The better-accuracy model (lgraph) hears commands more reliably than the
+ * small one; downloading it switches English to it automatically.
  */
 class ModelDownloadActivity : AppCompatActivity() {
 
@@ -31,8 +35,11 @@ class ModelDownloadActivity : AppCompatActivity() {
         binding = ActivityModelDownloadBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        binding.downloadEnButton.setOnClickListener { startDownload("en") }
-        binding.downloadHiButton.setOnClickListener { startDownload("hi") }
+        binding.downloadEnButton.setOnClickListener { startDownload(VoskManager.MODEL_KEY_EN) }
+        binding.downloadLgraphButton.setOnClickListener {
+            startDownload(VoskManager.MODEL_KEY_EN_LGRAPH)
+        }
+        binding.downloadHiButton.setOnClickListener { startDownload(VoskManager.MODEL_KEY_HI) }
         binding.doneButton.setOnClickListener {
             setResult(Activity.RESULT_OK)
             finish()
@@ -40,7 +47,10 @@ class ModelDownloadActivity : AppCompatActivity() {
 
         refreshButtons()
         if (VoskManager.isModelInstalled(this, "en")) {
-            setStatus("English voice model is installed. Hindi is optional.")
+            setStatus(
+                "English voice model is installed. If commands are often " +
+                    "misheard, the better-accuracy model below hears you more reliably.",
+            )
             binding.doneButton.visibility = View.VISIBLE
         } else {
             checkFreeSpace()
@@ -53,13 +63,21 @@ class ModelDownloadActivity : AppCompatActivity() {
     }
 
     private fun refreshButtons() {
-        val enInstalled = VoskManager.isModelInstalled(this, "en")
-        val hiInstalled = VoskManager.isModelInstalled(this, "hi")
+        val enInstalled = VoskManager.isModelDirInstalled(this, VoskManager.MODEL_EN)
+        val lgraphInstalled =
+            VoskManager.isModelDirInstalled(this, VoskManager.MODEL_EN_LGRAPH)
+        val hiInstalled = VoskManager.isModelDirInstalled(this, VoskManager.MODEL_HI)
         binding.downloadEnButton.isEnabled = !enInstalled
         binding.downloadEnButton.text = if (enInstalled) {
             "English model installed"
         } else {
             "Download English model (~41 MB)"
+        }
+        binding.downloadLgraphButton.isEnabled = !lgraphInstalled
+        binding.downloadLgraphButton.text = if (lgraphInstalled) {
+            "Better-accuracy English model installed"
+        } else {
+            "Download better-accuracy English model (~128 MB)"
         }
         binding.downloadHiButton.isEnabled = !hiInstalled
         binding.downloadHiButton.text = if (hiInstalled) {
@@ -82,11 +100,30 @@ class ModelDownloadActivity : AppCompatActivity() {
         }
     }
 
-    private fun startDownload(lang: String) {
-        val url = VoskManager.modelUrlFor(lang)
+    private fun startDownload(modelKey: String) {
+        val url = VoskManager.modelUrlForModel(modelKey)
         val zipName = url.substringAfterLast("/")
-        val label = if (lang == "hi") "Hindi" else "English"
+        val label = when (modelKey) {
+            VoskManager.MODEL_KEY_EN_LGRAPH -> "Better-accuracy English"
+            VoskManager.MODEL_KEY_HI -> "Hindi"
+            else -> "English"
+        }
+        // The lgraph model needs more room unpacked (~300 MB).
+        val neededBytes = if (modelKey == VoskManager.MODEL_KEY_EN_LGRAPH) {
+            MIN_FREE_BYTES_LGRAPH
+        } else {
+            MIN_FREE_BYTES
+        }
+        val freeBytes = StatFs(filesDir.absolutePath).availableBytes
+        if (freeBytes < neededBytes) {
+            showError(
+                "Low storage: only ${freeBytes / (1024 * 1024)} MB free. " +
+                    "This model needs about ${neededBytes / (1024 * 1024)} MB.",
+            )
+            return
+        }
         binding.downloadEnButton.isEnabled = false
+        binding.downloadLgraphButton.isEnabled = false
         binding.downloadHiButton.isEnabled = false
         binding.progressBar.visibility = View.VISIBLE
         binding.progressBar.progress = 0
@@ -102,12 +139,23 @@ class ModelDownloadActivity : AppCompatActivity() {
                 runOnUiThread { setStatus("Unpacking…") }
                 unzip(zipFile)
                 zipFile.delete()
-                if (!VoskManager.isModelInstalled(this, lang)) {
+                val dirName = VoskManager.modelDirNameForModel(modelKey)
+                if (!VoskManager.isModelDirInstalled(this, dirName)) {
                     throw IllegalStateException("Download finished but the model looks incomplete.")
+                }
+                // Downloading the better-accuracy model switches to it.
+                if (modelKey == VoskManager.MODEL_KEY_EN_LGRAPH) {
+                    VoskManager.setUseLgraph(this, true)
                 }
                 runOnUiThread {
                     refreshButtons()
-                    setStatus("$label voice model installed.")
+                    setStatus(
+                        if (modelKey == VoskManager.MODEL_KEY_EN_LGRAPH) {
+                            "Better-accuracy English model installed and active."
+                        } else {
+                            "$label voice model installed."
+                        },
+                    )
                     binding.progressBar.visibility = View.GONE
                     binding.progressText.text = ""
                     binding.doneButton.visibility = View.VISIBLE
@@ -198,5 +246,6 @@ class ModelDownloadActivity : AppCompatActivity() {
 
     companion object {
         private const val MIN_FREE_BYTES = 150L * 1024 * 1024
+        private const val MIN_FREE_BYTES_LGRAPH = 450L * 1024 * 1024
     }
 }
