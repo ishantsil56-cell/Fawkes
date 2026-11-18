@@ -15,13 +15,15 @@ import java.net.URL
 import java.util.zip.ZipInputStream
 
 /**
- * First-run screen: downloads Vosk voice models — English standard (~41 MB),
- * English better-accuracy (~128 MB), Hindi (~44 MB) — shows progress, unzips
- * into internal storage, verifies. The voice models are the only downloads
- * in the app — nothing else uses the network.
+ * First-run screen: downloads voice models — Whisper (~161 MB, the primary
+ * engine; hears accents best) and the Vosk models — English standard
+ * (~41 MB), English better-accuracy (~128 MB), Indian English (~1 GB),
+ * Hindi (~44 MB) — shows progress, unpacks into internal storage, verifies.
+ * The voice models are the only downloads in the app — nothing else uses
+ * the network.
  *
- * The better-accuracy model (lgraph) hears commands more reliably than the
- * small one; downloading it switches English to it automatically.
+ * Whisper downloads as plain files (no zip); the Vosk models are zips.
+ * Downloading a bigger English model switches English to it automatically.
  */
 class ModelDownloadActivity : AppCompatActivity() {
 
@@ -35,9 +37,13 @@ class ModelDownloadActivity : AppCompatActivity() {
         binding = ActivityModelDownloadBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        binding.downloadWhisperButton.setOnClickListener { startWhisperDownload() }
         binding.downloadEnButton.setOnClickListener { startDownload(VoskManager.MODEL_KEY_EN) }
         binding.downloadLgraphButton.setOnClickListener {
             startDownload(VoskManager.MODEL_KEY_EN_LGRAPH)
+        }
+        binding.downloadEnInButton.setOnClickListener {
+            startDownload(VoskManager.MODEL_KEY_EN_IN)
         }
         binding.downloadHiButton.setOnClickListener { startDownload(VoskManager.MODEL_KEY_HI) }
         binding.doneButton.setOnClickListener {
@@ -46,10 +52,13 @@ class ModelDownloadActivity : AppCompatActivity() {
         }
 
         refreshButtons()
-        if (VoskManager.isModelInstalled(this, "en")) {
+        if (WhisperManager.isModelInstalled(this)) {
+            setStatus("Whisper voice model is installed — Fawkes listens with Whisper.")
+            binding.doneButton.visibility = View.VISIBLE
+        } else if (VoskManager.isModelInstalled(this, "en")) {
             setStatus(
-                "English voice model is installed. If commands are often " +
-                    "misheard, the better-accuracy model below hears you more reliably.",
+                "English voice model is installed. Whisper (above) hears accents " +
+                    "more reliably — download it when you can.",
             )
             binding.doneButton.visibility = View.VISIBLE
         } else {
@@ -63,10 +72,19 @@ class ModelDownloadActivity : AppCompatActivity() {
     }
 
     private fun refreshButtons() {
+        val whisperInstalled = WhisperManager.isModelInstalled(this)
         val enInstalled = VoskManager.isModelDirInstalled(this, VoskManager.MODEL_EN)
         val lgraphInstalled =
             VoskManager.isModelDirInstalled(this, VoskManager.MODEL_EN_LGRAPH)
+        val enInInstalled =
+            VoskManager.isModelDirInstalled(this, VoskManager.MODEL_EN_IN)
         val hiInstalled = VoskManager.isModelDirInstalled(this, VoskManager.MODEL_HI)
+        binding.downloadWhisperButton.isEnabled = !whisperInstalled
+        binding.downloadWhisperButton.text = if (whisperInstalled) {
+            "Whisper model installed"
+        } else {
+            "Download Whisper model (~161 MB, recommended)"
+        }
         binding.downloadEnButton.isEnabled = !enInstalled
         binding.downloadEnButton.text = if (enInstalled) {
             "English model installed"
@@ -78,6 +96,12 @@ class ModelDownloadActivity : AppCompatActivity() {
             "Better-accuracy English model installed"
         } else {
             "Download better-accuracy English model (~128 MB)"
+        }
+        binding.downloadEnInButton.isEnabled = !enInInstalled
+        binding.downloadEnInButton.text = if (enInInstalled) {
+            "Indian English model installed"
+        } else {
+            "Download Indian English model (~1 GB)"
         }
         binding.downloadHiButton.isEnabled = !hiInstalled
         binding.downloadHiButton.text = if (hiInstalled) {
@@ -94,8 +118,9 @@ class ModelDownloadActivity : AppCompatActivity() {
             showError("Low storage: only ${freeMb} MB free. The model needs about 100 MB unpacked.")
         } else {
             setStatus(
-                "Download the English voice model (~41 MB). $freeMb MB free. " +
-                    "Hindi is optional.",
+                "Download the Whisper voice model (~161 MB) — it hears accents " +
+                    "best. $freeMb MB free. The small English model (~41 MB) works " +
+                    "too, and runs the wake word.",
             )
         }
     }
@@ -105,14 +130,15 @@ class ModelDownloadActivity : AppCompatActivity() {
         val zipName = url.substringAfterLast("/")
         val label = when (modelKey) {
             VoskManager.MODEL_KEY_EN_LGRAPH -> "Better-accuracy English"
+            VoskManager.MODEL_KEY_EN_IN -> "Indian English"
             VoskManager.MODEL_KEY_HI -> "Hindi"
             else -> "English"
         }
-        // The lgraph model needs more room unpacked (~300 MB).
-        val neededBytes = if (modelKey == VoskManager.MODEL_KEY_EN_LGRAPH) {
-            MIN_FREE_BYTES_LGRAPH
-        } else {
-            MIN_FREE_BYTES
+        // The bigger models need more room unpacked (lgraph ~300 MB, Indian ~2 GB).
+        val neededBytes = when (modelKey) {
+            VoskManager.MODEL_KEY_EN_IN -> MIN_FREE_BYTES_EN_IN
+            VoskManager.MODEL_KEY_EN_LGRAPH -> MIN_FREE_BYTES_LGRAPH
+            else -> MIN_FREE_BYTES
         }
         val freeBytes = StatFs(filesDir.absolutePath).availableBytes
         if (freeBytes < neededBytes) {
@@ -122,9 +148,7 @@ class ModelDownloadActivity : AppCompatActivity() {
             )
             return
         }
-        binding.downloadEnButton.isEnabled = false
-        binding.downloadLgraphButton.isEnabled = false
-        binding.downloadHiButton.isEnabled = false
+        setAllDownloadButtonsEnabled(false)
         binding.progressBar.visibility = View.VISIBLE
         binding.progressBar.progress = 0
         binding.progressText.text = ""
@@ -143,15 +167,19 @@ class ModelDownloadActivity : AppCompatActivity() {
                 if (!VoskManager.isModelDirInstalled(this, dirName)) {
                     throw IllegalStateException("Download finished but the model looks incomplete.")
                 }
-                // Downloading the better-accuracy model switches to it.
-                if (modelKey == VoskManager.MODEL_KEY_EN_LGRAPH) {
-                    VoskManager.setUseLgraph(this, true)
+                // Downloading a bigger English model switches to it.
+                if (modelKey == VoskManager.MODEL_KEY_EN_LGRAPH ||
+                    modelKey == VoskManager.MODEL_KEY_EN_IN
+                ) {
+                    VoskManager.setEnglishModel(this, modelKey)
                 }
                 runOnUiThread {
                     refreshButtons()
                     setStatus(
-                        if (modelKey == VoskManager.MODEL_KEY_EN_LGRAPH) {
-                            "Better-accuracy English model installed and active."
+                        if (modelKey == VoskManager.MODEL_KEY_EN_LGRAPH ||
+                            modelKey == VoskManager.MODEL_KEY_EN_IN
+                        ) {
+                            "$label model installed and active."
                         } else {
                             "$label voice model installed."
                         },
@@ -232,6 +260,133 @@ class ModelDownloadActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Downloads the Whisper model: encoder, decoder, tokens (Hugging Face)
+     * plus the Silero VAD model (sherpa-onnx releases), ~161 MB total.
+     * Files already present at the expected size are skipped, so a
+     * half-finished download resumes instead of starting over.
+     */
+    private fun startWhisperDownload() {
+        val freeBytes = StatFs(filesDir.absolutePath).availableBytes
+        if (freeBytes < MIN_FREE_BYTES_WHISPER) {
+            showError(
+                "Low storage: only ${freeBytes / (1024 * 1024)} MB free. " +
+                    "Whisper needs about ${MIN_FREE_BYTES_WHISPER / (1024 * 1024)} MB.",
+            )
+            return
+        }
+        setAllDownloadButtonsEnabled(false)
+        binding.progressBar.visibility = View.VISIBLE
+        binding.progressBar.progress = 0
+        binding.progressText.text = ""
+        setStatus("Downloading Whisper voice model…")
+        cancelled = false
+
+        Thread {
+            try {
+                val dir = WhisperManager.modelDir(this)
+                dir.mkdirs()
+                val files = listOf(
+                    WhisperManager.URL_ENCODER to WhisperManager.ENCODER_FILE,
+                    WhisperManager.URL_DECODER to WhisperManager.DECODER_FILE,
+                    WhisperManager.URL_TOKENS to WhisperManager.TOKENS_FILE,
+                    WhisperManager.URL_VAD to WhisperManager.VAD_FILE,
+                )
+                // Known sizes (bytes), verified against the hosts, so progress
+                // is honest even if a server omits Content-Length.
+                val sizes = listOf(29_120_534L, 130_672_026L, 816_730L, 643_854L)
+                val totalBytes = sizes.sum()
+                var doneBytes = 0L
+                files.forEachIndexed { i, (url, name) ->
+                    if (cancelled) return@Thread
+                    val dest = File(dir, name)
+                    val expected = sizes[i]
+                    if (dest.exists() && dest.length() == expected) {
+                        doneBytes += expected
+                        updateProgress(doneBytes, totalBytes)
+                    } else {
+                        runOnUiThread { setStatus("Downloading Whisper ($name)…") }
+                        downloadFile(url, dest) { bytes ->
+                            updateProgress(doneBytes + bytes, totalBytes)
+                        }
+                        doneBytes += expected
+                    }
+                }
+                if (!WhisperManager.isModelInstalled(this)) {
+                    throw IllegalStateException("Download finished but the model looks incomplete.")
+                }
+                runOnUiThread {
+                    refreshButtons()
+                    setStatus("Whisper model installed and active.")
+                    binding.progressBar.visibility = View.GONE
+                    binding.progressText.text = ""
+                    binding.doneButton.visibility = View.VISIBLE
+                }
+            } catch (e: Exception) {
+                if (!cancelled) {
+                    runOnUiThread {
+                        showError("Download failed: ${e.message ?: e.javaClass.simpleName}")
+                    }
+                }
+            }
+        }.start()
+    }
+
+    private fun updateProgress(doneBytes: Long, totalBytes: Long) {
+        val percent = (doneBytes * 100 / totalBytes).toInt().coerceIn(0, 100)
+        runOnUiThread {
+            binding.progressBar.progress = percent
+            binding.progressText.text = "$percent%"
+        }
+    }
+
+    /** Downloads one file, reporting bytes as they arrive. Atomic via a .tmp rename. */
+    private fun downloadFile(url: String, dest: File, onBytes: (Long) -> Unit) {
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+            instanceFollowRedirects = true
+            connectTimeout = 30_000
+            readTimeout = 30_000
+            connect()
+        }
+        if (connection.responseCode != HttpURLConnection.HTTP_OK) {
+            throw IllegalStateException("Server replied ${connection.responseCode}")
+        }
+        val tmp = File(dest.parentFile, dest.name + ".tmp")
+        var downloaded = 0L
+        try {
+            connection.inputStream.use { input ->
+                BufferedInputStream(input).use { buffered ->
+                    FileOutputStream(tmp).use { output ->
+                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                        while (!cancelled) {
+                            val read = buffered.read(buffer)
+                            if (read == -1) break
+                            output.write(buffer, 0, read)
+                            downloaded += read
+                            onBytes(downloaded)
+                        }
+                    }
+                }
+            }
+            if (cancelled) throw InterruptedException("Download cancelled.")
+            if (!tmp.renameTo(dest)) {
+                tmp.copyTo(dest, overwrite = true)
+                tmp.delete()
+            }
+        } catch (e: Exception) {
+            tmp.delete()
+            throw e
+        }
+    }
+
+    private fun setAllDownloadButtonsEnabled(enabled: Boolean) {
+        binding.downloadWhisperButton.isEnabled = enabled
+        binding.downloadEnButton.isEnabled = enabled
+        binding.downloadLgraphButton.isEnabled = enabled
+        binding.downloadEnInButton.isEnabled = enabled
+        binding.downloadHiButton.isEnabled = enabled
+    }
+
     private fun setStatus(text: String) {
         binding.statusText.text = text
     }
@@ -247,5 +402,7 @@ class ModelDownloadActivity : AppCompatActivity() {
     companion object {
         private const val MIN_FREE_BYTES = 150L * 1024 * 1024
         private const val MIN_FREE_BYTES_LGRAPH = 450L * 1024 * 1024
+        private const val MIN_FREE_BYTES_EN_IN = 2560L * 1024 * 1024
+        private const val MIN_FREE_BYTES_WHISPER = 300L * 1024 * 1024
     }
 }

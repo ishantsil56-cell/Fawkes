@@ -78,3 +78,34 @@ doesn't reflect reality. Tick before every release tag.
 - [ ] Wake word still works with the lgraph model active
 - [ ] Low-storage warning shows when free space is under 450 MB for the
   lgraph download
+
+## v0.3.3 — Indian English model
+
+- [ ] Indian English model downloads (~1 GB) and becomes active; home
+  screen shows "English (Indian)"
+- [ ] Settings offers three English models; switching between them works
+  and the old lgraph choice survives the update
+- [ ] Commands in Indian English are recognised more reliably than on the
+  US models
+- [ ] Wake word still works with the Indian English model active (plain
+  spotting fallback — no grammar support on this model)
+- [ ] Low-storage warning shows when free space is under 2.5 GB for the
+  Indian English download
+- [ ] First listen after switching to the Indian English model loads
+  without crashing (large model, watch memory)
+
+## v0.4.0 — Whisper
+
+- [ ] Whisper model downloads (~161 MB, 4 files) and becomes active; home
+  screen shows "Voice: Whisper ready."
+- [ ] A half-finished Whisper download resumes instead of restarting
+- [ ] Commands in Indian English are recognised reliably on Whisper
+- [ ] Speak, pause, transcribe: the command runs after a short pause
+  without tapping anything; tapping the mic cancels
+- [ ] Silence for 8 seconds gives "I didn't catch that" (no hang)
+- [ ] First Whisper listen loads the model (a few seconds) then listens
+- [ ] Wake word still works (Vosk) and the hands-free command after it
+  runs on Whisper
+- [ ] Without the Whisper model, commands still work on Vosk (fallback)
+- [ ] Low-storage warning shows when free space is under 300 MB for the
+  Whisper download

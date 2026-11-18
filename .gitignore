@@ -16,5 +16,8 @@ captures/
 vosk-model-*/
 app/src/main/assets/models/
 
+# sherpa-onnx AAR (Whisper runtime) — fetched by CI, never committed.
+app/libs/*.aar
+
 # OS
 .DS_Store

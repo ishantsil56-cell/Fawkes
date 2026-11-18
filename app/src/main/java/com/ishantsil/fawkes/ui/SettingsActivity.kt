@@ -12,6 +12,7 @@ import com.ishantsil.fawkes.databinding.ActivitySettingsBinding
 import com.ishantsil.fawkes.voice.LlmManager
 import com.ishantsil.fawkes.voice.ModelDownloadActivity
 import com.ishantsil.fawkes.voice.VoskManager
+import com.ishantsil.fawkes.voice.WhisperManager
 import com.ishantsil.fawkes.voice.WakeWordService
 
 /** Settings: voice speed, language, wake word, models, on-device AI. */
@@ -96,22 +97,37 @@ class SettingsActivity : AppCompatActivity() {
             }
         }
 
-        // Better-accuracy English model.
-        binding.lgraphSwitch.isChecked = VoskManager.useLgraph(this)
-        binding.lgraphSwitch.setOnCheckedChangeListener { _, enabled ->
-            if (enabled && !VoskManager.isModelDirInstalled(this, VoskManager.MODEL_EN_LGRAPH)) {
-                Toast.makeText(this, "Download the better-accuracy model first.", Toast.LENGTH_LONG).show()
+        // English model: standard (41 MB), better accuracy (128 MB),
+        // Indian English (1 GB, trained on Indian English).
+        when (VoskManager.englishModel(this)) {
+            VoskManager.MODEL_KEY_EN_LGRAPH -> binding.englishLgraph.isChecked = true
+            VoskManager.MODEL_KEY_EN_IN -> binding.englishEnIn.isChecked = true
+            else -> binding.englishStandard.isChecked = true
+        }
+        binding.englishModelGroup.setOnCheckedChangeListener { _, checkedId ->
+            val newKey = when (checkedId) {
+                binding.englishLgraph.id -> VoskManager.MODEL_KEY_EN_LGRAPH
+                binding.englishEnIn.id -> VoskManager.MODEL_KEY_EN_IN
+                else -> VoskManager.MODEL_KEY_EN
+            }
+            val dirName = VoskManager.modelDirNameForModel(newKey)
+            if (!VoskManager.isModelDirInstalled(this, dirName)) {
+                val name = when (newKey) {
+                    VoskManager.MODEL_KEY_EN_LGRAPH -> "better-accuracy English"
+                    VoskManager.MODEL_KEY_EN_IN -> "Indian English"
+                    else -> "standard English"
+                }
+                Toast.makeText(this, "Download the $name model first.", Toast.LENGTH_LONG).show()
                 openModelDownload()
-                binding.lgraphSwitch.isChecked = false
+                // Revert the radio selection.
+                when (VoskManager.englishModel(this)) {
+                    VoskManager.MODEL_KEY_EN_LGRAPH -> binding.englishLgraph.isChecked = true
+                    VoskManager.MODEL_KEY_EN_IN -> binding.englishEnIn.isChecked = true
+                    else -> binding.englishStandard.isChecked = true
+                }
                 return@setOnCheckedChangeListener
             }
-            if (!enabled && !VoskManager.isModelDirInstalled(this, VoskManager.MODEL_EN)) {
-                Toast.makeText(this, "Download the standard English model first.", Toast.LENGTH_LONG).show()
-                openModelDownload()
-                binding.lgraphSwitch.isChecked = true
-                return@setOnCheckedChangeListener
-            }
-            VoskManager.setUseLgraph(this, enabled)
+            VoskManager.setEnglishModel(this, newKey)
             refreshModelStatus()
         }
 
@@ -134,17 +150,26 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun refreshModelStatus() {
+        val whisper = WhisperManager.isModelInstalled(this)
         val en = VoskManager.isModelDirInstalled(this, VoskManager.MODEL_EN)
         val lgraph = VoskManager.isModelDirInstalled(this, VoskManager.MODEL_EN_LGRAPH)
+        val enIn = VoskManager.isModelDirInstalled(this, VoskManager.MODEL_EN_IN)
         val hi = VoskManager.isModelDirInstalled(this, VoskManager.MODEL_HI)
-        val active = when (VoskManager.currentModelKey(this)) {
-            VoskManager.MODEL_KEY_EN_LGRAPH -> "English (better accuracy)"
-            VoskManager.MODEL_KEY_HI -> "Hindi"
-            else -> "English"
+        val active = if (whisper) {
+            "Whisper"
+        } else {
+            when (VoskManager.currentModelKey(this)) {
+                VoskManager.MODEL_KEY_EN_LGRAPH -> "English (better accuracy)"
+                VoskManager.MODEL_KEY_EN_IN -> "English (Indian)"
+                VoskManager.MODEL_KEY_HI -> "Hindi"
+                else -> "English"
+            }
         }
         binding.modelStatus.text =
-            "English model: ${if (en) "installed" else "not installed"}\n" +
+            "Whisper model: ${if (whisper) "installed" else "not installed"}\n" +
+                "English model: ${if (en) "installed" else "not installed"}\n" +
                 "Better-accuracy English model: ${if (lgraph) "installed" else "not installed"}\n" +
+                "Indian English model: ${if (enIn) "installed" else "not installed"}\n" +
                 "Hindi model: ${if (hi) "installed" else "not installed"}\n" +
                 "Active: $active"
     }

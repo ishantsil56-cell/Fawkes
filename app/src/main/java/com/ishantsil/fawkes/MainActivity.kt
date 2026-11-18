@@ -18,8 +18,10 @@ import com.ishantsil.fawkes.tts.Speaker
 import com.ishantsil.fawkes.ui.HelpActivity
 import com.ishantsil.fawkes.ui.SettingsActivity
 import com.ishantsil.fawkes.voice.ModelDownloadActivity
+import com.ishantsil.fawkes.voice.SpeechEngine
 import com.ishantsil.fawkes.voice.VoskManager
 import com.ishantsil.fawkes.voice.WakeWordService
+import com.ishantsil.fawkes.voice.WhisperManager
 import com.ishantsil.fawkes.widget.FawkesWidget
 
 class MainActivity : AppCompatActivity() {
@@ -69,7 +71,7 @@ class MainActivity : AppCompatActivity() {
 
         askForPermissionsIfNeeded()
         refreshModelStatus()
-        log("Fawkes 0.3.1 — tap to listen, or say \"Hey Fawkes\" (Settings).")
+        log("Fawkes 0.4.0 — tap to listen, or say \"Hey Fawkes\" (Settings).")
 
         autoListenPending = intent?.getBooleanExtra(EXTRA_LISTEN, false) == true
     }
@@ -93,18 +95,19 @@ class MainActivity : AppCompatActivity() {
         stopListening()
         speaker.shutdown()
         VoskManager.release()
+        WhisperManager.releaseModel()
         super.onDestroy()
     }
 
     private fun onMicTapped() {
-        if (VoskManager.isListening()) {
+        if (SpeechEngine.isListening()) {
             cancelContinuousRestart()
             stopListening()
             log("Stopped listening.")
             return
         }
-        if (!VoskManager.isModelInstalled(this)) {
-            log("No voice model yet — download it first.")
+        if (!WhisperManager.isModelInstalled(this) && !VoskManager.isModelInstalled(this)) {
+            log("No voice model yet — download Whisper or a Vosk model first.")
             openModelDownload()
             return
         }
@@ -122,7 +125,7 @@ class MainActivity : AppCompatActivity() {
         WakeWordService.pause(this)
         binding.micButton.text = getString(R.string.listening_tap_to_stop)
         binding.heardText.text = getString(R.string.listening_hint)
-        VoskManager.startListening(this, object : VoskManager.Listener {
+        SpeechEngine.startListening(this, object : VoskManager.Listener {
             override fun onPartial(text: String) {
                 binding.heardText.text = text
             }
@@ -146,7 +149,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun stopListening() {
-        VoskManager.stopListening()
+        SpeechEngine.stopListening()
         if (::binding.isInitialized) {
             binding.micButton.text = getString(R.string.tap_to_listen)
         }
@@ -223,16 +226,20 @@ class MainActivity : AppCompatActivity() {
 
     private fun refreshModelStatus() {
         val lang = VoskManager.currentLanguage(this)
-        val installed = VoskManager.isModelInstalled(this)
+        val voskInstalled = VoskManager.isModelInstalled(this)
+        val whisperInstalled = WhisperManager.isModelInstalled(this)
         val langName = if (lang == "hi") "Hindi"
-        else if (VoskManager.useLgraph(this)) "English (better accuracy)"
-        else "English"
-        binding.modelStatus.text = if (installed) {
-            getString(R.string.model_ready) + " ($langName)"
-        } else {
-            getString(R.string.model_missing)
+        else when (VoskManager.englishModel(this)) {
+            VoskManager.MODEL_KEY_EN_LGRAPH -> "English (better accuracy)"
+            VoskManager.MODEL_KEY_EN_IN -> "English (Indian)"
+            else -> "English"
         }
-        binding.downloadButton.isEnabled = !installed
+        binding.modelStatus.text = when {
+            whisperInstalled -> "Voice: Whisper ready."
+            voskInstalled -> getString(R.string.model_ready) + " ($langName)"
+            else -> getString(R.string.model_missing)
+        }
+        binding.downloadButton.isEnabled = !whisperInstalled || !voskInstalled
     }
 
     private fun log(line: String) {

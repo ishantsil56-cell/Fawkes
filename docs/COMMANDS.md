@@ -9,7 +9,16 @@ guesses and tries each one against the commands, so a misheard top guess
 no longer kills the command — the log notes when an alternative matched.
 For noticeably better hearing, download the bigger English voice model
 (lgraph, ~128 MB) from the model download screen or switch to it in
-Settings; it replaces the small 41 MB model for English.
+Settings; it replaces the small 41 MB model for English. 0.3.3 adds the
+Indian English model (~1 GB, trained on Indian English) as a third
+English option in the same places; pick it in Settings if the US models
+keep mishearing your accent.
+
+Listening engine (0.4.0): commands are heard by Whisper (base, int8) once
+its model is downloaded (~161 MB, from the model download screen) — it
+hears accents the Vosk models keep missing. Speak the command, pause, and
+it transcribes; tapping the mic again cancels. Without the Whisper model,
+Fawkes falls back to Vosk, and the wake word always runs on Vosk.
 
 ## Phase 1 — the 12 core commands
 

@@ -76,7 +76,7 @@ class WakeWordService : Service() {
         stopListening()
         if (commandListening) {
             commandListening = false
-            VoskManager.stopListening()
+            SpeechEngine.stopListening()
         }
         speaker?.shutdown()
         speaker = null
@@ -151,7 +151,7 @@ class WakeWordService : Service() {
         if (commandListening) return
         commandListening = true
         stopListening() // Stop the wake recognizer; one microphone.
-        VoskManager.startListening(this, object : VoskManager.Listener {
+        SpeechEngine.startListening(this, object : VoskManager.Listener {
             override fun onPartial(text: String) {
                 // Partials are ignored in the background.
             }
@@ -181,7 +181,7 @@ class WakeWordService : Service() {
      */
     private fun endCommandListening() {
         commandListening = false
-        VoskManager.stopListening()
+        SpeechEngine.stopListening()
         if (!paused && isEnabled(this)) startListening()
     }
 
@@ -198,7 +198,7 @@ class WakeWordService : Service() {
         stopListening()
         if (commandListening) {
             commandListening = false
-            VoskManager.stopListening()
+            SpeechEngine.stopListening()
         }
         updateNotification(listening = false)
     }

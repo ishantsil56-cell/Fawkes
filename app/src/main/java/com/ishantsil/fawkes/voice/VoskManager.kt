@@ -26,14 +26,17 @@ object VoskManager {
 
     const val MODEL_EN = "vosk-model-small-en-us-0.15"
     const val MODEL_EN_LGRAPH = "vosk-model-en-us-0.22-lgraph"
+    const val MODEL_EN_IN = "vosk-model-en-in-0.5"
     const val MODEL_HI = "vosk-model-small-hi-0.22"
     const val MODEL_URL_EN = "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip"
     const val MODEL_URL_EN_LGRAPH = "https://alphacephei.com/vosk/models/vosk-model-en-us-0.22-lgraph.zip"
+    const val MODEL_URL_EN_IN = "https://alphacephei.com/vosk/models/vosk-model-en-in-0.5.zip"
     const val MODEL_URL_HI = "https://alphacephei.com/vosk/models/vosk-model-small-hi-0.22.zip"
 
     /** Model keys used by the download screen. */
     const val MODEL_KEY_EN = "en"
     const val MODEL_KEY_EN_LGRAPH = "en-lgraph"
+    const val MODEL_KEY_EN_IN = "en-in"
     const val MODEL_KEY_HI = "hi"
 
     const val SAMPLE_RATE = 16000f
@@ -43,7 +46,8 @@ object VoskManager {
 
     private const val PREFS = "fawkes_prefs"
     private const val KEY_LANGUAGE = "language"
-    private const val KEY_USE_LGRAPH = "use_lgraph"
+    private const val KEY_ENGLISH_MODEL = "english_model"
+    private const val KEY_USE_LGRAPH = "use_lgraph" // 0.3.2 only; migrated once, see englishModel()
     private const val MODEL_MARKER = "am/final.mdl"
 
     interface Listener {
@@ -77,42 +81,53 @@ object VoskManager {
         if (modelKey != null && currentModelKey(context) != modelKey) releaseModel()
     }
 
-    /** True when the bigger, more accurate English model is selected. */
-    fun useLgraph(context: Context): Boolean =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getBoolean(KEY_USE_LGRAPH, false)
+    /**
+     * Which English model is selected: "en" (small, 41 MB), "en-lgraph"
+     * (128 MB) or "en-in" (Indian English, 1 GB). Migrates the 0.3.2
+     * boolean once: lgraph on means "en-lgraph".
+     */
+    fun englishModel(context: Context): String {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val saved = prefs.getString(KEY_ENGLISH_MODEL, null)
+        if (saved != null) return saved
+        val migrated = if (prefs.getBoolean(KEY_USE_LGRAPH, false)) {
+            MODEL_KEY_EN_LGRAPH
+        } else {
+            MODEL_KEY_EN
+        }
+        prefs.edit().putString(KEY_ENGLISH_MODEL, migrated).apply()
+        return migrated
+    }
 
-    fun setUseLgraph(context: Context, enabled: Boolean) {
-        val changed = useLgraph(context) != enabled
+    fun setEnglishModel(context: Context, modelKey: String) {
+        val changed = englishModel(context) != modelKey
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().putBoolean(KEY_USE_LGRAPH, enabled).apply()
+            .edit().putString(KEY_ENGLISH_MODEL, modelKey).apply()
         if (changed) releaseModel()
     }
 
-    /** The model key for the current language + accuracy choice. */
+    /** The model key for the current language + English model choice. */
     fun currentModelKey(context: Context): String {
         val lang = currentLanguage(context)
-        return if (lang == "hi") MODEL_KEY_HI
-        else if (useLgraph(context)) MODEL_KEY_EN_LGRAPH
-        else MODEL_KEY_EN
+        return if (lang == "hi") MODEL_KEY_HI else englishModel(context)
     }
 
     fun modelDirNameForModel(modelKey: String): String = when (modelKey) {
         MODEL_KEY_EN_LGRAPH -> MODEL_EN_LGRAPH
+        MODEL_KEY_EN_IN -> MODEL_EN_IN
         MODEL_KEY_HI -> MODEL_HI
         else -> MODEL_EN
     }
 
     fun modelUrlForModel(modelKey: String): String = when (modelKey) {
         MODEL_KEY_EN_LGRAPH -> MODEL_URL_EN_LGRAPH
+        MODEL_KEY_EN_IN -> MODEL_URL_EN_IN
         MODEL_KEY_HI -> MODEL_URL_HI
         else -> MODEL_URL_EN
     }
 
     fun modelDir(context: Context, lang: String = currentLanguage(context)): File {
-        val key = if (lang == "hi") MODEL_KEY_HI
-        else if (useLgraph(context)) MODEL_KEY_EN_LGRAPH
-        else MODEL_KEY_EN
+        val key = if (lang == "hi") MODEL_KEY_HI else englishModel(context)
         return File(context.filesDir, modelDirNameForModel(key))
     }
 
@@ -147,7 +162,10 @@ object VoskManager {
                 model = Model(modelDir(context).absolutePath)
                 modelKey = key
                 mainHandler.post { onReady() }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                // Throwable, not Exception: the 1 GB Indian English model
+                // can throw OutOfMemoryError while loading, and that must
+                // surface as a clean error, not a crash.
                 mainHandler.post { onError("Could not load voice model: ${e.message}") }
             }
         }.start()
@@ -270,11 +288,20 @@ object VoskManager {
      * A recognizer restricted to the wake phrase (plus [unk] for everything
      * else). Used by WakeWordService for keyword spotting. The caller owns
      * the recognizer and must close it.
+     *
+     * Big static-vocabulary models (e.g. the Indian English model) don't
+     * support grammar restriction, so the constructor throws — fall back
+     * to a plain recognizer and spot the phrase in its text instead.
      */
     fun createWakeRecognizer(context: Context): Recognizer? {
         val currentModel = model ?: return null
+        try {
+            return Recognizer(currentModel, SAMPLE_RATE, "[\"$WAKE_PHRASE\", \"[unk]\"]")
+        } catch (_: Exception) {
+            // Static model: grammar not supported.
+        }
         return try {
-            Recognizer(currentModel, SAMPLE_RATE, "[\"$WAKE_PHRASE\", \"[unk]\"]")
+            Recognizer(currentModel, SAMPLE_RATE)
         } catch (_: Exception) {
             null
         }

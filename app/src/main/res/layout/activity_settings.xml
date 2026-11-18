@@ -73,12 +73,31 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp" />
 
-        <com.google.android.material.switchmaterial.SwitchMaterial
-            android:id="@+id/lgraphSwitch"
-            android:layout_width="wrap_content"
+        <RadioGroup
+            android:id="@+id/englishModelGroup"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="Better-accuracy English model (128 MB)" />
+            android:layout_marginTop="8dp">
+
+            <RadioButton
+                android:id="@+id/englishStandard"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="English — standard (41 MB)" />
+
+            <RadioButton
+                android:id="@+id/englishLgraph"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="English — better accuracy (128 MB)" />
+
+            <RadioButton
+                android:id="@+id/englishEnIn"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="English — Indian English (1 GB)" />
+
+        </RadioGroup>
 
         <Button
             android:id="@+id/modelsButton"

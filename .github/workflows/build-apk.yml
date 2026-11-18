@@ -23,6 +23,15 @@ jobs:
         with:
           gradle-version: '8.10.2'
 
+      # sherpa-onnx (Whisper runtime) ships no Maven artifact; the build
+      # expects its release AAR in app/libs/. Fetched here, never committed.
+      - name: Fetch sherpa-onnx AAR
+        run: |
+          mkdir -p app/libs
+          curl -fSL --retry 3 -o app/libs/sherpa-onnx-static-link-onnxruntime-1.13.3.aar \
+            https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.3/sherpa-onnx-static-link-onnxruntime-1.13.3.aar
+          ls -lh app/libs/
+
       - name: Build debug APK
         run: gradle assembleDebug --stacktrace
 
