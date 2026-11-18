@@ -44,10 +44,10 @@ object CommandExecutor {
         val first = nonEmpty.firstOrNull() ?: return
         var matchedPhrase = first
         var result = CommandMatcher.match(first, context)
-        if (result is MatchResult.Unknown) {
+        if (result is CommandMatcher.MatchResult.Unknown) {
             for (phrase in nonEmpty.drop(1)) {
                 val candidate = CommandMatcher.match(phrase, context)
-                if (candidate !is MatchResult.Unknown) {
+                if (candidate !is CommandMatcher.MatchResult.Unknown) {
                     matchedPhrase = phrase
                     result = candidate
                     break

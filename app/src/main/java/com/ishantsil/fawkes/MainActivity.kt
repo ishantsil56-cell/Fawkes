@@ -10,6 +10,7 @@ import android.os.Looper
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
 import com.ishantsil.fawkes.commands.CommandExecutor
 import com.ishantsil.fawkes.commands.ConversationMemory
 import com.ishantsil.fawkes.databinding.ActivityMainBinding
@@ -180,7 +181,7 @@ class MainActivity : AppCompatActivity() {
         if (!isContinuousListen()) return
         val delayMs = (1_000L + spoken.length * 1000L / 15).coerceAtMost(6_000L)
         continuousRunnable = Runnable {
-            if (isContinuousListen() && isResumed) onMicTapped()
+            if (isContinuousListen() && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) onMicTapped()
         }
         mainHandler.postDelayed(continuousRunnable!!, delayMs)
     }
